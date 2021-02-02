@@ -9,11 +9,15 @@ import { Connection } from '@salesforce/core';
 import { JsonMap } from '@salesforce/ts-types';
 import { QueryResult } from 'jsforce';
 import * as vscode from 'vscode';
+import { nls } from '../messages';
 
 export class QueryRunner {
   constructor(private connection: Connection) {}
 
-  public async runQuery(queryText: string): Promise<QueryResult<JsonMap>> {
+  public async runQuery(
+    queryText: string,
+    options = { showErrors: true }
+  ): Promise<QueryResult<JsonMap>> {
     try {
       const rawQueryData = (await this.connection.query(
         queryText
@@ -24,7 +28,11 @@ export class QueryRunner {
       };
       return cleanQueryData;
     } catch (error) {
-      vscode.window.showErrorMessage(`${error.name}:  ${error.message}`);
+      // TODO: i18n
+      if (options.showErrors) {
+        const message = nls.localize('error_run_soql_query', error.message);
+        vscode.window.showErrorMessage(message);
+      }
       throw error;
     }
   }

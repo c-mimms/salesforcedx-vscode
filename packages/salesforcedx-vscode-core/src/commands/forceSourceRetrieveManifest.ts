@@ -4,6 +4,7 @@
  * Licensed under the BSD 3-Clause license.
  * For full license text, see LICENSE.txt file in the repo root or https://opensource.org/licenses/BSD-3-Clause
  */
+import { LibraryCommandletExecutor } from '@salesforce/salesforcedx-utils-vscode/out/src';
 import {
   Command,
   SfdxCommandBuilder
@@ -12,7 +13,7 @@ import { ContinueResponse } from '@salesforce/salesforcedx-utils-vscode/out/src/
 import { ComponentSet } from '@salesforce/source-deploy-retrieve';
 import { join } from 'path';
 import * as vscode from 'vscode';
-import { channelService } from '../channels';
+import { channelService, OUTPUT_CHANNEL } from '../channels';
 import {
   ConflictDetectionChecker,
   ConflictDetectionMessages
@@ -24,9 +25,8 @@ import { SfdxPackageDirectories } from '../sfdxProject';
 import { telemetryService } from '../telemetry';
 import { getRootWorkspacePath } from '../util';
 import {
+  createRetrieveOutput,
   FilePathGatherer,
-  LibraryCommandletExecutor,
-  outputRetrieveTable,
   SfdxCommandlet,
   SfdxCommandletExecutor,
   SfdxWorkspaceChecker,
@@ -46,21 +46,35 @@ export class ForceSourceRetrieveManifestExecutor extends SfdxCommandletExecutor<
   }
 }
 
-export class LibrarySourceRetrieveManifestExecutor extends LibraryCommandletExecutor<string> {
-  protected logName = 'force_source_retrieve_with_manifest_beta';
-  protected executionName = 'Retrieve With Manifest (beta)';
+export class LibrarySourceRetrieveManifestExecutor extends LibraryCommandletExecutor<
+  string
+> {
+  constructor() {
+    super(
+      'Retrieve With Manifest (beta)',
+      'force_source_retrieve_with_manifest_beta',
+      OUTPUT_CHANNEL
+    );
+  }
 
-  protected async run(response: ContinueResponse<string>): Promise<boolean> {
-    const packageDirs = await SfdxPackageDirectories.getPackageDirectoryFullPaths();
-    const defaultOutput = join(getRootWorkspacePath(), await SfdxPackageDirectories.getDefaultPackageDir() ?? '');
+  public async run(response: ContinueResponse<string>): Promise<boolean> {
+    const packageDirs = await SfdxPackageDirectories.getPackageDirectoryPaths();
+    const defaultOutput = join(
+      getRootWorkspacePath(),
+      (await SfdxPackageDirectories.getDefaultPackageDir()) ?? ''
+    );
     const components = await ComponentSet.fromManifestFile(response.data, {
-      resolve: packageDirs,
+      resolve: packageDirs.map(relativeDir =>
+        join(getRootWorkspacePath(), relativeDir)
+      ),
       literalWildcard: true
     });
     const connection = await workspaceContext.getConnection();
-    const result = await components.retrieve(connection, defaultOutput, { merge: true });
+    const result = await components.retrieve(connection, defaultOutput, {
+      merge: true
+    });
 
-    channelService.appendLine(outputRetrieveTable(result));
+    channelService.appendLine(createRetrieveOutput(result, packageDirs));
 
     return result.success;
   }
@@ -100,9 +114,9 @@ export async function forceSourceRetrieveManifest(explorerPath: vscode.Uri) {
   const commandlet = new SfdxCommandlet(
     new SfdxWorkspaceChecker(),
     new FilePathGatherer(explorerPath),
-    useBetaDeployRetrieve([]) ?
-      new LibrarySourceRetrieveManifestExecutor() :
-      new ForceSourceRetrieveManifestExecutor(),
+    useBetaDeployRetrieve([])
+      ? new LibrarySourceRetrieveManifestExecutor()
+      : new ForceSourceRetrieveManifestExecutor(),
     new ConflictDetectionChecker(messages)
   );
   await commandlet.run();

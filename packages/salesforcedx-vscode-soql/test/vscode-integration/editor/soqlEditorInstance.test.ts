@@ -8,25 +8,15 @@
 import { expect } from 'chai';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+import * as commonUtils from '../../../src/commonUtils';
 import { MessageType } from '../../../src/editor/soqlEditorInstance';
 import {
-  getMockConnection,
-  MockConnection,
   mockSObject,
   MockTextDocumentProvider,
   TestSoqlEditorInstance
 } from '../testUtilities';
 
-const sfdxCoreExtension = vscode.extensions.getExtension(
-  'salesforce.salesforcedx-vscode-core'
-);
-const sfdxCoreExports = sfdxCoreExtension
-  ? sfdxCoreExtension.exports
-  : undefined;
-const { workspaceContext } = sfdxCoreExports;
-
 describe('SoqlEditorInstance should', () => {
-  let mockConnection: MockConnection;
   let mockWebviewPanel: vscode.WebviewPanel;
   let docProviderDisposable: vscode.Disposable;
   let mockTextDocument: vscode.TextDocument;
@@ -52,7 +42,6 @@ describe('SoqlEditorInstance should', () => {
 
   beforeEach(async () => {
     sandbox = sinon.createSandbox();
-    mockConnection = getMockConnection(sandbox);
     docProviderDisposable = vscode.workspace.registerTextDocumentContentProvider(
       'sfdc-test',
       new MockTextDocumentProvider()
@@ -80,7 +69,6 @@ describe('SoqlEditorInstance should', () => {
   });
 
   it('post CONNECTION_CHANGED message when connection is changed', async () => {
-    sandbox.stub(workspaceContext, 'getConnection').returns(mockConnection);
     const expected = { type: 'connection_changed' };
     const postMessageSpy = sandbox.spy(mockWebviewPanel.webview, 'postMessage');
 
@@ -90,15 +78,13 @@ describe('SoqlEditorInstance should', () => {
   });
 
   it('responds to sobjects_request with a list of sobjects', async () => {
-    sandbox.stub(workspaceContext, 'getConnection').returns(mockConnection);
-
     const expectedMessage = {
       type: 'sobjects_response',
       payload: ['A', 'B']
     };
     const postMessageSpy = sandbox.spy(mockWebviewPanel.webview, 'postMessage');
 
-    instance.sendEvent({ type: 'sobjects_request' });
+    instance.mockReceiveEvent({ type: 'sobjects_request' });
     // above function has nested async message passing; wait a bit
     await waitForAsync(50);
 
@@ -106,15 +92,16 @@ describe('SoqlEditorInstance should', () => {
   });
 
   it('responds to sobject_metadata_request with SObject metadata', async () => {
-    sandbox.stub(workspaceContext, 'getConnection').returns(mockConnection);
-
     const expectedMessage = {
       type: 'sobject_metadata_response',
       payload: mockSObject
     };
     const postMessageSpy = sandbox.spy(mockWebviewPanel.webview, 'postMessage');
 
-    instance.sendEvent({ type: 'sobject_metadata_request', payload: 'A' });
+    instance.mockReceiveEvent({
+      type: 'sobject_metadata_request',
+      payload: 'A'
+    });
     // above function has nested async message passing; wait a bit
     await waitForAsync(50);
 
@@ -124,7 +111,7 @@ describe('SoqlEditorInstance should', () => {
   it('handles query event and updates text document with soql', async () => {
     const aQuery = 'select a,b,c from somewhere';
     const updateDocumentSpy = sandbox.spy(instance, 'updateTextDocument');
-    instance.sendEvent({
+    instance.mockReceiveEvent({
       type: MessageType.UI_SOQL_CHANGED,
       payload: aQuery
     });
@@ -135,9 +122,45 @@ describe('SoqlEditorInstance should', () => {
     expect(updateDocumentSpy.getCall(0).args[1]).to.equal(aQuery);
   });
 
+  it('muffles the postMessage once if soql statement has NOT changed', async () => {
+    const postMessageSpy = sandbox.spy(mockWebviewPanel.webview, 'postMessage');
+    const aQuery = 'select a,b,c from somewhere';
+    instance.mockReceiveEvent({
+      type: MessageType.UI_SOQL_CHANGED,
+      payload: aQuery
+    });
+    // attempt to update webview with unchanged soql statement
+    instance.updateWebview(mockTextDocument);
+    expect(
+      postMessageSpy.callCount === 0,
+      `postMessageSpy callcount expected 0, but got ${postMessageSpy.callCount}`
+    );
+    // a second update with the same statement will send
+    instance.updateWebview(mockTextDocument);
+    expect(
+      postMessageSpy.callCount === 1,
+      `postMessageSpy callcount expected 1, but got ${postMessageSpy.callCount}`
+    );
+  });
+
+  it('does emit if soql statement has changed', async () => {
+    const postMessageSpy = sandbox.spy(mockWebviewPanel.webview, 'postMessage');
+    const aQuery = 'select a,b,c from somewhere';
+    instance.mockReceiveEvent({
+      type: MessageType.UI_SOQL_CHANGED,
+      payload: aQuery
+    });
+    instance.updateTextDocument(mockTextDocument, 'select d from somewhere');
+    instance.updateWebview(mockTextDocument);
+    expect(
+      postMessageSpy.callCount === 1,
+      `postMessageSpy callcount expected 1, but got ${postMessageSpy.callCount}`
+    );
+  });
+
   it('handles activation event and updates the webview', async () => {
     const updateWebviewSpy = sandbox.spy(instance, 'updateWebview');
-    instance.sendEvent({
+    instance.mockReceiveEvent({
       type: MessageType.UI_ACTIVATED
     });
     expect(
@@ -146,14 +169,60 @@ describe('SoqlEditorInstance should', () => {
     );
   });
 
-  it('handles run query event and opens the webview', async () => {
+  it('handles run query event and opens the webview and sends run_query_done to webview', async () => {
+    const expectedMessage = {
+      type: 'run_query_done'
+    };
+    const postMessageSpy = sandbox.spy(mockWebviewPanel.webview, 'postMessage');
+
     const openQueryResultsSpy = sandbox.spy(instance, 'openQueryDataView');
-    instance.sendEvent({
+    instance.mockReceiveEvent({
       type: MessageType.RUN_SOQL_QUERY
     });
+
     expect(
       openQueryResultsSpy.callCount === 1,
       `openQueryResultsSpy callcount expected 1, but got ${openQueryResultsSpy.callCount}`
     );
+    expect(postMessageSpy.calledWith(expectedMessage));
+  });
+
+  it('display and track error wheb webview.postMessage throws', async () => {
+    sandbox.stub(mockWebviewPanel.webview, 'postMessage').rejects();
+    const trackErrorSpy = sandbox.spy(commonUtils, 'trackErrorWithTelemetry');
+
+    instance.sendMessageToUi('message-type', 'message-body');
+
+    return Promise.resolve().then(() => {
+      expect(trackErrorSpy.callCount).to.equal(1);
+    });
+  });
+
+  it('handles telemetry events and tracks when there is unsupported syntax', async () => {
+    const trackErrorSpy = sandbox.spy(commonUtils, 'trackErrorWithTelemetry');
+    instance.mockReceiveEvent({
+      type: MessageType.UI_TELEMETRY,
+      payload: { unsupported: 1 }
+    });
+    return Promise.resolve().then(() => {
+      expect(trackErrorSpy.callCount).to.equal(1);
+      expect(trackErrorSpy.getCall(0).args[0]).to.equal('syntax_unsupported');
+    });
+  });
+
+  it('handles telemetry errors and unsupported properties as numbers AND arrays', async () => {
+    const trackErrorSpy = sandbox.spy(commonUtils, 'trackErrorWithTelemetry');
+    const telemetryEvent = {
+      type: MessageType.UI_TELEMETRY,
+      payload: { unsupported: ['WHERE 1 = 1'] }
+    };
+    instance.mockReceiveEvent(telemetryEvent);
+    return Promise.resolve().then(() => {
+      expect(trackErrorSpy.callCount).to.equal(1);
+      expect(trackErrorSpy.getCall(0).args[0]).to.equal('syntax_unsupported');
+      expect(trackErrorSpy.getCall(0).args[1]).contains(
+        telemetryEvent.payload.unsupported[0]
+      );
+    });
   });
 });

@@ -11,6 +11,7 @@ import { QueryResult } from 'jsforce';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { getDocumentName } from '../../../src/commonUtils';
+import * as commonUtils from '../../../src/commonUtils';
 import {
   FileFormat,
   QueryDataFileService
@@ -65,7 +66,7 @@ describe('Query Data View Service', () => {
     QueryDataViewService.extensionPath = '';
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel);
     dataViewService.createOrShowWebView();
-    dataViewService.sendEvent({ type: 'activate' });
+    dataViewService.mockReceiveEvent({ type: 'activate' });
 
     expect(postMessageSpy.callCount).equal(1);
 
@@ -91,11 +92,50 @@ describe('Query Data View Service', () => {
     QueryDataViewService.extensionPath = '';
     sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel);
     dataViewService.createOrShowWebView();
-    dataViewService.sendEvent({ type: 'save_records', format: FileFormat.CSV });
+    dataViewService.mockReceiveEvent({
+      type: 'save_records',
+      format: FileFormat.CSV
+    });
 
     expect(saveRecordsSpy.callCount).equal(1);
     const postMessageArgs = saveRecordsSpy.args[0][0];
     expect(postMessageArgs).to.eql(FileFormat.CSV);
     expect(fileServiceStub.callCount).equal(1);
+  });
+
+  it('should track error via telemetry if event type is not handled', () => {
+    const trackSpy = sandbox.spy(commonUtils, 'trackErrorWithTelemetry');
+    const dataViewService = new TestQueryDataViewService(
+      mockSubscription,
+      queryRecords,
+      mockTextDocument
+    );
+    dataViewService.createOrShowWebView();
+    dataViewService.mockReceiveEvent({
+      type: 'unsupported',
+      format: FileFormat.CSV
+    });
+    expect(trackSpy.callCount).to.equal(1);
+  });
+
+  it('should display error when save fails', () => {
+    const trackSpy = sandbox.spy(commonUtils, 'trackErrorWithTelemetry');
+    const dataViewService = new TestQueryDataViewService(
+      mockSubscription,
+      queryRecords,
+      mockTextDocument
+    );
+    const fileServiceStub = sandbox
+      .stub(QueryDataFileService.prototype, 'save')
+      .throws();
+    QueryDataViewService.extensionPath = '';
+    sandbox.stub(vscode.window, 'createWebviewPanel').returns(mockWebviewPanel);
+    dataViewService.createOrShowWebView();
+    dataViewService.mockReceiveEvent({
+      type: 'save_records',
+      format: FileFormat.CSV
+    });
+    expect(fileServiceStub.callCount).equal(1);
+    expect(trackSpy.callCount).to.equal(1);
   });
 });

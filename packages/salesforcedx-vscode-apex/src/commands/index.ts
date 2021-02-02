@@ -6,10 +6,17 @@
  */
 
 export {
+  ApexLibraryTestRunExecutor,
+  forceApexDebugClassRunCodeActionDelegate,
+  forceApexDebugMethodRunCodeActionDelegate,
   forceApexTestClassRunCodeAction,
   forceApexTestClassRunCodeActionDelegate,
   forceApexTestMethodRunCodeAction,
   forceApexTestMethodRunCodeActionDelegate,
   ForceApexTestRunCodeActionExecutor
 } from './forceApexTestRunCodeAction';
-export { checkSObjectsAndRefresh, forceGenerateFauxClassesCreate, verifyUsernameAndInitSObjectDefinitions as initSObjectDefinitions } from './forceGenerateFauxClasses';
+export {
+  checkSObjectsAndRefresh,
+  forceGenerateFauxClassesCreate,
+  verifyUsernameAndInitSObjectDefinitions as initSObjectDefinitions
+} from './forceGenerateFauxClasses';

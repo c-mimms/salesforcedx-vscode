@@ -1,7 +1,7 @@
 {
   "name": "@salesforce/salesforcedx-visualforce-markup-language-server",
   "description": "Language service for Visualforce Markup",
-  "version": "50.8.0",
+  "version": "50.16.0",
   "publisher": "salesforce",
   "license": "BSD-3-Clause",
   "engines": {
@@ -22,7 +22,7 @@
     "mocha-multi-reporters": "^1.1.7",
     "nyc": "^13",
     "shx": "0.2.2",
-    "typescript": "3.7.5"
+    "typescript": "3.8.3"
   },
   "dependencies": {
     "vscode-languageserver-types": "3.4.0",

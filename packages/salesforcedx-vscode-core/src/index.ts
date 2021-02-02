@@ -10,7 +10,6 @@ import {
   forceAliasList,
   forceAnalyticsTemplateCreate,
   forceApexClassCreate,
-  forceApexExecute,
   forceApexLogGet,
   forceApexTestRun,
   forceApexTriggerCreate,
@@ -71,6 +70,7 @@ import { isvDebugBootstrap } from './commands/isvdebugging';
 import {
   CompositeParametersGatherer,
   EmptyParametersGatherer,
+  LibraryCommandletExecutor,
   SelectFileName,
   SelectOutputDir,
   SfdxCommandlet,
@@ -78,9 +78,11 @@ import {
   SfdxWorkspaceChecker
 } from './commands/util';
 import { registerConflictView, setupConflictView } from './conflict';
+import { TELEMETRY_GLOBAL_VALUE, TELEMETRY_OPT_OUT_LINK } from './constants';
 import { getDefaultUsernameOrAlias } from './context';
 import { workspaceContext } from './context';
 import * as decorators from './decorators';
+import { nls } from './messages';
 import { isDemoMode } from './modes/demo-mode';
 import { notificationService, ProgressNotification } from './notifications';
 import { orgBrowser } from './orgBrowser';
@@ -282,18 +284,6 @@ function registerCommands(
     'sfdx.force.data.soql.query.selection',
     forceDataSoqlQuery
   );
-
-  const forceApexExecuteDocumentCmd = vscode.commands.registerCommand(
-    'sfdx.force.apex.execute.document',
-    forceApexExecute,
-    false
-  );
-  const forceApexExecuteSelectionCmd = vscode.commands.registerCommand(
-    'sfdx.force.apex.execute.selection',
-    forceApexExecute,
-    true
-  );
-
   const forceProjectCreateCmd = vscode.commands.registerCommand(
     'sfdx.force.project.create',
     forceSfdxProjectCreate
@@ -303,7 +293,6 @@ function registerCommands(
     'sfdx.force.package.install',
     forcePackageInstall
   );
-
   const forceProjectWithManifestCreateCmd = vscode.commands.registerCommand(
     'sfdx.force.project.with.manifest.create',
     forceProjectWithManifestCreate
@@ -370,8 +359,6 @@ function registerCommands(
   );
 
   return vscode.Disposable.from(
-    forceApexExecuteDocumentCmd,
-    forceApexExecuteSelectionCmd,
     forceApexTestRunCmd,
     forceAuthWebLoginCmd,
     forceAuthDevHubCmd,
@@ -512,12 +499,39 @@ async function setupOrgBrowser(
   );
 }
 
+function showTelemetryMessage(context: vscode.ExtensionContext) {
+  const messageAlreadyPrompted = context.globalState.get(
+    TELEMETRY_GLOBAL_VALUE
+  );
+  if (!messageAlreadyPrompted) {
+    // Show the message and set telemetry to true;
+    const showButtonText = nls.localize('telemetry_legal_dialog_button_text');
+    const showMessage = nls.localize(
+      'telemetry_legal_dialog_message',
+      TELEMETRY_OPT_OUT_LINK
+    );
+    vscode.window
+      .showInformationMessage(showMessage, showButtonText)
+      .then(selection => {
+        // Open disable telemetry link
+        if (selection && selection === showButtonText) {
+          vscode.commands.executeCommand(
+            'vscode.open',
+            vscode.Uri.parse(TELEMETRY_OPT_OUT_LINK)
+          );
+        }
+      });
+    context.globalState.update(TELEMETRY_GLOBAL_VALUE, true);
+  }
+}
+
 export async function activate(context: vscode.ExtensionContext) {
   const extensionHRStart = process.hrtime();
-  const machineId =
-    vscode && vscode.env ? vscode.env.machineId : 'someValue.machineId';
-  await telemetryService.initializeService(context, machineId);
-  telemetryService.showTelemetryMessage();
+  const { name, aiKey, version } = require(context.asAbsolutePath(
+    './package.json'
+  ));
+  await telemetryService.initializeService(context, name, aiKey, version);
+  showTelemetryMessage(context);
 
   // Task View
   const treeDataProvider = vscode.window.registerTreeDataProvider(
@@ -629,6 +643,7 @@ export async function activate(context: vscode.ExtensionContext) {
     getDefaultUsernameOrAlias,
     getUserId,
     isCLIInstalled,
+    LibraryCommandletExecutor,
     notificationService,
     OrgAuthInfo,
     ProgressNotification,

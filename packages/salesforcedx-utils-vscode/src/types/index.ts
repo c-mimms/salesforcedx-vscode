@@ -5,6 +5,20 @@
  * For full license text, see LICENSE.txt file in the repo root or https://opensource.org/licenses/BSD-3-Clause
  */
 
+export {
+  SFDX_CONFIG_FILE,
+  SFDX_FOLDER,
+  SFDX_PROJECT_FILE,
+  ENV_SFDX_DEFAULTUSERNAME,
+  ENV_SFDX_INSTANCE_URL,
+  SFDX_CONFIG_ISV_DEBUGGER_SID,
+  SFDX_CONFIG_ISV_DEBUGGER_URL,
+  DEFAULT_USERNAME_KEY,
+  DEFAULT_CONNECTION_TIMEOUT_MS,
+  CLIENT_ID
+} from './constants';
+import { Event } from 'vscode';
+
 // Precondition checking
 ////////////////////////
 export interface PreconditionChecker {
@@ -31,6 +45,17 @@ export interface CancelResponse {
 
 export interface ParametersGatherer<T> {
   gather(): Promise<CancelResponse | ContinueResponse<T>>;
+}
+
+// Execution
+//////////////////
+export interface FlagParameter<T> {
+  flag: T;
+}
+
+export interface CommandletExecutor<T> {
+  execute(response: ContinueResponse<T>): void;
+  readonly onDidFinishExecution?: Event<[number, number]>;
 }
 
 // Selection

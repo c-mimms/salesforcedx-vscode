@@ -4,9 +4,10 @@
  * Licensed under the BSD 3-Clause license.
  * For full license text, see LICENSE.txt file in the repo root or https://opensource.org/licenses/BSD-3-Clause
  */
-
 import * as path from 'path';
 import { ExtensionContext, workspace } from 'vscode';
+import * as queryValidation from './queryValidation';
+import * as codeCompletion from './codeCompletion';
 
 import {
   LanguageClient,
@@ -17,9 +18,15 @@ import {
 
 let client: LanguageClient;
 
-export function startLanguageClient(context: ExtensionContext): void {
+export function clearDiagnostics(): void {
+  client?.diagnostics?.clear();
+}
+
+export async function startLanguageClient(
+  extensionContext: ExtensionContext
+): Promise<void> {
   // path to language server module
-  const serverModule = context.asAbsolutePath(
+  const serverModule = extensionContext.asAbsolutePath(
     path.join(
       'node_modules',
       '@salesforce',
@@ -45,7 +52,8 @@ export function startLanguageClient(context: ExtensionContext): void {
     synchronize: {
       configurationSection: 'soql',
       fileEvents: workspace.createFileSystemWatcher('**/*.soql')
-    }
+    },
+    middleware: codeCompletion.middleware
   };
 
   // Create the language client and start the client.
@@ -56,8 +64,12 @@ export function startLanguageClient(context: ExtensionContext): void {
     clientOptions
   );
 
+  client = queryValidation.init(client);
+
   // Start the client. This will also launch the server
   client.start();
+  await client.onReady();
+  client = queryValidation.afterStart(client);
 }
 
 export function stopLanguageClient(): Thenable<void> | undefined {

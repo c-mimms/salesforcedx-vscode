@@ -4,6 +4,7 @@
  * Licensed under the BSD 3-Clause license.
  * For full license text, see LICENSE.txt file in the repo root or https://opensource.org/licenses/BSD-3-Clause
  */
+import { LibraryCommandletExecutor } from '@salesforce/salesforcedx-utils-vscode/out/src';
 import {
   CliCommandExecutor,
   Command,
@@ -14,14 +15,12 @@ import {
   ContinueResponse,
   LocalComponent
 } from '@salesforce/salesforcedx-utils-vscode/out/src/types';
-import {
-  ComponentSet
-} from '@salesforce/source-deploy-retrieve';
+import { ComponentSet } from '@salesforce/source-deploy-retrieve';
 import { ComponentLike } from '@salesforce/source-deploy-retrieve/lib/src/common/types';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { RetrieveDescriber, RetrieveMetadataTrigger } from '.';
-import { channelService } from '../../channels';
+import { channelService, OUTPUT_CHANNEL } from '../../channels';
 import { workspaceContext } from '../../context';
 import { nls } from '../../messages';
 import { SfdxPackageDirectories } from '../../sfdxProject';
@@ -29,8 +28,7 @@ import { TelemetryData, telemetryService } from '../../telemetry';
 import { getRootWorkspacePath, MetadataDictionary } from '../../util';
 import {
   createComponentCount,
-  LibraryCommandletExecutor,
-  outputRetrieveTable,
+  createRetrieveOutput,
   SfdxCommandlet,
   SfdxCommandletExecutor,
   SfdxWorkspaceChecker,
@@ -142,38 +140,40 @@ export class ForceSourceRetrieveExecutor extends SfdxCommandletExecutor<
 export class LibraryRetrieveSourcePathExecutor extends LibraryCommandletExecutor<
   LocalComponent[]
 > {
-  protected logName = 'force_source_retrieve_beta';
-  protected executionName = 'Retrieve (Beta)';
-  private openAfterRetrieve: boolean = false;
+  private openAfterRetrieve: boolean;
 
-  constructor(openAfterRetrieve: boolean = false) {
-    super();
+  constructor(openAfterRetrieve = false) {
+    super('Retrieve (Beta)', 'force_source_retrieve_beta', OUTPUT_CHANNEL);
     this.openAfterRetrieve = openAfterRetrieve;
   }
 
-  protected async run(
+  public async run(
     response: ContinueResponse<LocalComponent[]>
   ): Promise<boolean> {
     const dirPath = (await SfdxPackageDirectories.getDefaultPackageDir()) || '';
     const output = path.join(getRootWorkspacePath(), dirPath);
     const comps: LocalComponent[] = response.data;
 
-    const components = new ComponentSet(comps.map(
-      lc => ({ fullName: lc.fileName, type: lc.type })
-    ));
+    const components = new ComponentSet(
+      comps.map(lc => ({ fullName: lc.fileName, type: lc.type }))
+    );
 
     const metadataCount = JSON.stringify(createComponentCount(components));
     this.telemetry.addProperty('metadataCount', metadataCount);
 
     const connection = await workspaceContext.getConnection();
-    const result = await components.retrieve(connection, output, { merge: true });
+    const result = await components.retrieve(connection, output, {
+      merge: true
+    });
 
     if (result.success && this.openAfterRetrieve) {
       const compSet = ComponentSet.fromSource(output);
-      await this.openResources(this.findResources(Array.from(components)[0], compSet));
+      await this.openResources(
+        this.findResources(Array.from(components)[0], compSet)
+      );
     }
 
-    channelService.appendLine(outputRetrieveTable(result));
+    channelService.appendLine(createRetrieveOutput(result, [dirPath]));
 
     return result.success;
   }

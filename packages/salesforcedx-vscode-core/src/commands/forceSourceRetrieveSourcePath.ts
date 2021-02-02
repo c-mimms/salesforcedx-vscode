@@ -4,7 +4,7 @@
  * Licensed under the BSD 3-Clause license.
  * For full license text, see LICENSE.txt file in the repo root or https://opensource.org/licenses/BSD-3-Clause
  */
-
+import { LibraryCommandletExecutor } from '@salesforce/salesforcedx-utils-vscode/out/src';
 import {
   Command,
   SfdxCommandBuilder
@@ -22,7 +22,7 @@ import {
   SourceComponent
 } from '@salesforce/source-deploy-retrieve';
 import * as vscode from 'vscode';
-import { channelService } from '../channels';
+import { channelService, OUTPUT_CHANNEL } from '../channels';
 import { workspaceContext } from '../context';
 import { nls } from '../messages';
 import { notificationService } from '../notifications';
@@ -30,9 +30,8 @@ import { SfdxPackageDirectories, SfdxProjectConfig } from '../sfdxProject';
 import { telemetryService } from '../telemetry';
 import {
   createComponentCount,
+  createRetrieveOutput,
   FilePathGatherer,
-  LibraryCommandletExecutor,
-  outputRetrieveTable,
   SfdxCommandlet,
   SfdxCommandletExecutor,
   SfdxWorkspaceChecker,
@@ -123,14 +122,20 @@ export async function forceSourceRetrieveSourcePath(explorerPath: vscode.Uri) {
 export class LibraryRetrieveSourcePathExecutor extends LibraryCommandletExecutor<
   string
 > {
-  protected logName = 'force_source_retrieve_with_sourcepath_beta';
-  protected executionName = 'Retrieve (Beta)';
+  constructor() {
+    super(
+      'Retrieve (Beta)',
+      'force_source_retrieve_with_sourcepath_beta',
+      OUTPUT_CHANNEL
+    );
+  }
 
-  protected async run(response: ContinueResponse<string>): Promise<boolean> {
+  public async run(response: ContinueResponse<string>): Promise<boolean> {
     let retrieve;
     const connection = await workspaceContext.getConnection();
     const components = ComponentSet.fromSource(response.data);
-    const first: SourceComponent = components.getSourceComponents().next().value;
+    const first: SourceComponent = components.getSourceComponents().next()
+      .value;
 
     if (
       components.size === 1 &&
@@ -138,14 +143,18 @@ export class LibraryRetrieveSourcePathExecutor extends LibraryCommandletExecutor
     ) {
       const projectNamespace = (await SfdxProjectConfig.getValue(
         'namespace'
-        )) as string;
+      )) as string;
       const client = new SourceClient(connection);
       retrieve = client.tooling.retrieve({
-        components: [first],
+        components,
         namespace: projectNamespace
       });
     } else {
-      retrieve = components.retrieve(connection, await SfdxPackageDirectories.getDefaultPackageDir() ?? '', { merge: true });
+      retrieve = components.retrieve(
+        connection,
+        (await SfdxPackageDirectories.getDefaultPackageDir()) ?? '',
+        { merge: true }
+      );
     }
 
     const metadataCount = JSON.stringify(createComponentCount(components));
@@ -153,7 +162,12 @@ export class LibraryRetrieveSourcePathExecutor extends LibraryCommandletExecutor
 
     const result = await retrieve;
 
-    channelService.appendLine(outputRetrieveTable(result));
+    channelService.appendLine(
+      createRetrieveOutput(
+        result,
+        await SfdxPackageDirectories.getPackageDirectoryPaths()
+      )
+    );
 
     return result.success;
   }

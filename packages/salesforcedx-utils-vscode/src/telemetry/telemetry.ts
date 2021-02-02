@@ -7,10 +7,7 @@
 
 import * as util from 'util';
 import { env, ExtensionContext, workspace } from 'vscode';
-import {
-  disableCLITelemetry,
-  isCLITelemetryAllowed
-} from './cliConfiguration';
+import { disableCLITelemetry, isCLITelemetryAllowed } from './cliConfiguration';
 import TelemetryReporter from './telemetryReporter';
 
 interface CommandMetric {
@@ -154,73 +151,71 @@ export class TelemetryService {
     }
   }
 
-  public async sendExtensionActivationEvent(hrstart: [number, number]): Promise<void> {
-    if (this.reporter !== undefined && (await this.isTelemetryEnabled())) {
+  public sendExtensionActivationEvent(hrstart: [number, number]): void {
+    this.validateTelemetry(() => {
       const startupTime = this.getEndHRTime(hrstart);
-      this.reporter.sendTelemetryEvent(
+      this.reporter!.sendTelemetryEvent(
         'activationEvent',
         {
           extensionName: this.extensionName
         },
         { startupTime }
       );
-    }
+    });
   }
 
-  public async sendExtensionDeactivationEvent() {
-    if (this.reporter !== undefined && (await this.isTelemetryEnabled())) {
-      this.reporter.sendTelemetryEvent('deactivationEvent', {
+  public sendExtensionDeactivationEvent(): void {
+    this.validateTelemetry(() => {
+      this.reporter!.sendTelemetryEvent('deactivationEvent', {
         extensionName: this.extensionName
       });
-    }
+    });
   }
 
-  public async sendCommandEvent(
+  public sendCommandEvent(
     commandName?: string,
     hrstart?: [number, number],
     properties?: Properties,
     measurements?: Measurements
-  ) {
-    if (
-      this.reporter !== undefined &&
-      (await this.isTelemetryEnabled()) &&
-      commandName
-    ) {
-      const baseProperties: CommandMetric = {
-        extensionName: this.extensionName,
-        commandName
-      };
-      const aggregatedProps = Object.assign(baseProperties, properties);
+  ): void {
+    this.validateTelemetry(() => {
+      if (commandName) {
+        const baseProperties: CommandMetric = {
+          extensionName: this.extensionName,
+          commandName
+        };
+        const aggregatedProps = Object.assign(baseProperties, properties);
 
-      let aggregatedMeasurements: Measurements | undefined;
-      if (hrstart || measurements) {
-        aggregatedMeasurements = Object.assign({}, measurements);
-        if (hrstart) {
-          aggregatedMeasurements.executionTime = this.getEndHRTime(hrstart);
+        let aggregatedMeasurements: Measurements | undefined;
+        if (hrstart || measurements) {
+          aggregatedMeasurements = Object.assign({}, measurements);
+          if (hrstart) {
+            aggregatedMeasurements.executionTime = this.getEndHRTime(hrstart);
+          }
         }
+        this.reporter!.sendTelemetryEvent(
+          'commandExecution',
+          aggregatedProps,
+          aggregatedMeasurements
+        );
       }
-      this.reporter.sendTelemetryEvent(
-        'commandExecution',
-        aggregatedProps,
-        aggregatedMeasurements
-      );
-    }
+    });
   }
 
-  public async sendException(name: string, message: string) {
-    if (this.reporter !== undefined && (await this.isTelemetryEnabled())) {
-      this.reporter.sendExceptionEvent(name, message);
-    }
+  public sendException(name: string, message: string) {
+    this.validateTelemetry(() => {
+      this.reporter!.sendExceptionEvent(name, message);
+    });
   }
 
-  public async sendEventData(
+  public sendEventData(
     eventName: string,
     properties?: { [key: string]: string },
     measures?: { [key: string]: number }
-  ) {
-    if (this.reporter !== undefined && (await this.isTelemetryEnabled())) {
-      this.reporter.sendTelemetryEvent(eventName, properties, measures);
-    }
+  ): void {
+    this.validateTelemetry(() => {
+      this.reporter!.sendTelemetryEvent(eventName, properties, measures);
+    });
   }
 
   public dispose(): void {
@@ -232,5 +227,19 @@ export class TelemetryService {
   public getEndHRTime(hrstart: [number, number]): number {
     const hrend = process.hrtime(hrstart);
     return Number(util.format('%d%d', hrend[0], hrend[1] / 1000000));
+  }
+
+  /**
+   * Helper to run a callback if telemetry has been initialized and is
+   * enabled.
+   *
+   * @param callback function to call if telemetry is enabled
+   */
+  private validateTelemetry(callback: () => void): void {
+    if (this.reporter !== undefined) {
+      this.isTelemetryEnabled()
+        .then(enabled => (enabled ? callback() : undefined))
+        .catch(err => console.error(err));
+    }
   }
 }

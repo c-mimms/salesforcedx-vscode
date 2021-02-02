@@ -6,6 +6,7 @@
  */
 
 import { Connection } from '@salesforce/core';
+import { LibraryCommandletExecutor } from '@salesforce/salesforcedx-utils-vscode/out/src';
 import {
   Command,
   SfdxCommandBuilder
@@ -18,32 +19,26 @@ import {
   ComponentSet,
   DeployStatus,
   SourceClient,
-  SourceComponent,
   SourceDeployResult,
   ToolingDeployStatus
 } from '@salesforce/source-deploy-retrieve';
 import * as vscode from 'vscode';
-import { channelService } from '../channels';
+import { channelService, OUTPUT_CHANNEL } from '../channels';
 import { workspaceContext } from '../context';
 import { handleDeployRetrieveLibraryDiagnostics } from '../diagnostics';
 import { nls } from '../messages';
 import { notificationService } from '../notifications';
 import { DeployQueue } from '../settings';
-import { SfdxProjectConfig } from '../sfdxProject';
+import { SfdxPackageDirectories, SfdxProjectConfig } from '../sfdxProject';
 import { telemetryService } from '../telemetry';
 import { BaseDeployExecutor, DeployType } from './baseDeployCommand';
 import { SourcePathChecker } from './forceSourceRetrieveSourcePath';
-import {
-  FilePathGatherer,
-  LibraryCommandletExecutor,
-  SfdxCommandlet,
-  SfdxWorkspaceChecker
-} from './util';
+import { FilePathGatherer, SfdxCommandlet, SfdxWorkspaceChecker } from './util';
 import {
   createComponentCount,
+  createDeployOutput,
   useBetaDeployRetrieve
-} from './util/betaDeployRetrieve';
-import { LibraryDeployResultParser } from './util/libraryDeployResultParser';
+} from './util';
 
 export class ForceSourceDeploySourcePathExecutor extends BaseDeployExecutor {
   public build(sourcePath: string): Command {
@@ -136,8 +131,13 @@ export async function forceSourceDeployMultipleSourcePaths(uris: vscode.Uri[]) {
 export class LibraryDeploySourcePathExecutor extends LibraryCommandletExecutor<
   string | string[]
 > {
-  protected executionName = 'Deploy (Beta)';
-  protected logName = 'force_source_deploy_with_sourcepath_beta';
+  constructor() {
+    super(
+      'Deploy (Beta)',
+      'force_source_deploy_with_sourcepath_beta',
+      OUTPUT_CHANNEL
+    );
+  }
 
   public async run(
     response: ContinueResponse<string | string[]>
@@ -155,8 +155,10 @@ export class LibraryDeploySourcePathExecutor extends LibraryCommandletExecutor<
 
       const result = await deploy;
 
-      const parser = new LibraryDeployResultParser(result);
-      const outputResult = parser.resultParser(result);
+      const outputResult = createDeployOutput(
+        result,
+        await SfdxPackageDirectories.getPackageDirectoryPaths()
+      );
       channelService.appendLine(outputResult);
       BaseDeployExecutor.errorCollection.clear();
       if (
@@ -199,9 +201,12 @@ export class LibraryDeploySourcePathExecutor extends LibraryCommandletExecutor<
 
     if (namespace) {
       const client = new SourceClient(connection);
-      deploy = client.tooling.deploy(components.getSourceComponents().next().value, {
-        namespace
-      });
+      deploy = client.tooling.deploy(
+        components.getSourceComponents().next().value,
+        {
+          namespace
+        }
+      );
       api = 'tooling';
     } else {
       deploy = components.deploy(connection);
