@@ -140,12 +140,12 @@
             </xs:enumeration>
             <xs:enumeration value="lightning__RecordAction">
               <xs:annotation>
-                <xs:documentation>Enables an lwc record action component to be available for quick action.</xs:documentation>
+                <xs:documentation>Makes Lightning web component record action available for quick action.</xs:documentation>
               </xs:annotation>
             </xs:enumeration>
             <xs:enumeration value="lightning__GlobalAction">
               <xs:annotation>
-                <xs:documentation>Enables an lwc global action component to be available for quick action.</xs:documentation>
+                <xs:documentation>Makes Lightning web component global action available for quick action.</xs:documentation>
               </xs:annotation>
             </xs:enumeration>
           </xs:restriction>
